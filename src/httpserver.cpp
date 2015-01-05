@@ -3,6 +3,8 @@
 #include <signal.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <string>
+#include <algorithm>
 
 #define CHECK(r, msg)                                           \
     if (r) {                                                    \
@@ -51,6 +53,7 @@ void build_HTTP_response_header(std::string &response_header,
     os<<buff;
     sprintf(buff, "%u", body.size());
     headers["Content-Length"] = buff;
+    headers["Access-Control-Allow-Origin"] = "*";
     for (headers_t::iterator i = headers.begin();
          i != headers.end(); ++i) {
         os<<i->first<<": "<<i->second<<"\r\n";
@@ -241,6 +244,15 @@ void after_write(uv_write_t* req, int status) {
 
 void parse_query_string(std::string &qstr, query_strings_t &query) {
     std::string key, value;
+  int pos = 0;
+
+  std::string old = "+";
+  std::string rep= "%20";
+  while ((pos = qstr.find(old, pos)) != std::string::npos) {
+      qstr.replace(pos, old.length(), rep);
+          pos += rep.length();
+  }
+
     bool parsing_key = true;
     for (size_t i = 0; i < qstr.size(); ++i) {
         char ch = qstr[i];
