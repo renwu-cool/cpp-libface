@@ -372,8 +372,7 @@ rich_suggestions_json_array(vp_t& suggestions) {
         escape_special_chars(snippet);
 
         std::string trailer = i + 1 == suggestions.end() ? "\n" : ",\n";
-        ret += " { \"phrase\": \"" + i->phrase + "\", \"score\": " + uint_to_string(i->weight) + 
-            (snippet.empty() ? "" : ", \"snippet\": \"" + snippet + "\"") + " }" + trailer;
+        ret += " { \"suggestion\": \"" + i->phrase + "\" }" + trailer; 
     }
     ret += "]";
     return ret;
