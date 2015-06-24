@@ -29,6 +29,9 @@
 #include <fstream>
 #include <algorithm>
 
+// Boost-headers
+#include <boost/unordered_map.hpp>
+
 #if !defined NMAX
 #define NMAX 32
 #endif
@@ -45,11 +48,11 @@
 // Undefine the macro below to use C-style I/O routines.
 // #define USE_CXX_IO
 
+typedef boost::unordered::unordered_map<std::string, SuggestGroup> SuggestGroupMap;
+typedef boost::unordered::unordered_map<std::string, SuggestGroup>::const_iterator SuggestGroupConstIterator;
+typedef boost::unordered::unordered_map<std::string, SuggestGroup>::iterator SuggestGroupIterator;
+SuggestGroupMap suggest_groups;
 
-
-
-PhraseMap pm;                   // Phrase Map (usually a sorted array of strings)
-RMQ st;                         // An instance of the RMQ Data Structure
 char *if_mmap_addr = NULL;      // Pointer to the mmapped area of the file
 off_t if_length = 0;            // The length of the input file
 volatile bool building = false; // TRUE if the structure is being built
@@ -477,7 +480,7 @@ void get_line(std::ifstream fin, char *buff, int buff_len, int &read_len) {
 int
 do_import(std::string file, uint_t limit, 
           int &rnadded, int &rnlines) {
-    bool is_input_sorted = true;
+    rnadded = 0;
 #if defined USE_CXX_IO
     std::ifstream fin(file.c_str());
 #else
@@ -520,7 +523,6 @@ do_import(std::string file, uint_t limit,
             return -IMPORT_MMAP_FAILED;
         }
 
-        pm.repr.clear();
         char buff[INPUT_LINE_SIZE];
         std::string prev_phrase;
 
@@ -540,31 +542,31 @@ do_import(std::string file, uint_t limit,
             StringProxy snippet;
             InputLineParser(if_mmap_addr, foffset, buff, &weight, &phrase, &snippet).start_parsing();
 
+            std::string key = SuggestGroup::parse_key(snippet);
+            SuggestGroup &sg = suggest_groups[key];
+
             foffset += llen;
 
             if (!phrase.empty()) {
                 str_lowercase(phrase);
                 DCERR("Adding: " << weight << ", " << phrase << ", " << std::string(snippet) << endl);
-                pm.insert(weight, phrase, snippet);
+                sg.pm.insert(weight, phrase, snippet);
             }
-            if (is_input_sorted && prev_phrase <= phrase) {
+            if (sg.is_input_sorted && prev_phrase <= phrase) {
                 prev_phrase.swap(phrase);
-            } else if (is_input_sorted) {
-                is_input_sorted = false;
+            } else if (sg.is_input_sorted) {
+                sg.is_input_sorted = false;
             }
         }
 
-        DCERR("Creating PhraseMap::Input is " << (!is_input_sorted ? "NOT " : "") << "sorted\n");
+        DCERR("Creating PhraseMap::Input is " << (!sg.is_input_sorted ? "NOT " : "") << "sorted\n");
 
         fclose(fin);
-        pm.finalize(is_input_sorted);
-        vui_t weights;
-        for (size_t i = 0; i < pm.repr.size(); ++i) {
-            weights.push_back(pm.repr[i].weight);
+        for (SuggestGroupIterator it = suggest_groups.begin(); it != suggest_groups.end(); ++it) {
+            it->second.pm.finalize(it->second.is_input_sorted);
+            rnadded += it->second.initialize_RMQ();
         }
-        st.initialize(weights);
 
-        rnadded = weights.size();
         rnlines = nlines;
 
         building = false;
@@ -638,13 +640,17 @@ static void handle_export(client_t *client, parsed_url_t &url) {
     ofstream fout(file.c_str());
     const time_t start_time = time(NULL);
 
-    for (size_t i = 0; i < pm.repr.size(); ++i) {
-        fout<<pm.repr[i].weight<<'\t'<<pm.repr[i].phrase<<'\t'<<std::string(pm.repr[i].snippet)<<'\n';
+    size_t total_records = 0;
+    for (SuggestGroupConstIterator it = suggest_groups.cbegin(); it != suggest_groups.cend(); ++it) {
+        for (size_t i = 0; i < it->second.pm.repr.size(); ++i) {
+            fout<<it->second.pm.repr[i].weight<<'\t'<<it->second.pm.repr[i].phrase<<'\t'<<std::string(it->second.pm.repr[i].snippet)<<'\n';
+            total_records += it->second.pm.repr.size();
+        }
     }
 
     building = false;
     std::ostringstream os;
-    os << "Successfully wrote " << pm.repr.size()
+    os << "Successfully wrote " << total_records
        << " records to output file '" << file
        << "' in " << (time(NULL) - start_time) << "second(s)\n";
     body = os.str();
@@ -666,6 +672,7 @@ static void handle_suggest(client_t *client, parsed_url_t &url) {
     std::string sn   = url.query["n"];
     std::string cb   = unescape_query(url.query["callback"]);
     std::string type = unescape_query(url.query["type"]);
+    std::string cc   = unescape_query(url.query["countryCode"]);
 
     DCERR("handle_suggest::q:"<<q<<", sn:"<<sn<<", callback: "<<cb<<endl);
 
@@ -677,9 +684,16 @@ static void handle_suggest(client_t *client, parsed_url_t &url) {
         n = 1;
     }
 
+    /*
+      get the right group of suggestions
+    */
+    std::string group_key = SuggestGroup::build_key(cc);
+    if (group_key.empty()) group_key = DEFAULT_SUGGEST_GROUP_KEY;
+    SuggestGroup &sg = suggest_groups.count(group_key) > 0 ? suggest_groups[group_key] : suggest_groups[EMPTY_SUGGEST_GROUP_KEY];
+
     const bool has_cb = !cb.empty();
     str_lowercase(q);
-    vp_t results = suggest(pm, st, q, n);
+    vp_t results = suggest(sg.pm, sg.st, q, n);
 
     /*
       for (size_t i = 0; i < results.size(); ++i) {
@@ -711,7 +725,11 @@ static void handle_stats(client_t *client, parsed_url_t &url) {
         b += sprintf(b, "Data Store is busy\n");
     }
     else {
-        b += sprintf(b, "Data store size: %d entries\n", pm.repr.size());
+        int total_entries = 0;
+        for (SuggestGroupConstIterator it = suggest_groups.cbegin(); it != suggest_groups.cend(); ++it) {
+            total_entries += it->second.pm.repr.size();
+        }
+        b += sprintf(b, "Data store size: %d entries\n", total_entries);
     }
     b += sprintf(b, "Memory usage: %d MiB\n", get_memory_usage(getpid())/1024);
     body = buff;

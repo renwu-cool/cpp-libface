@@ -16,5 +16,7 @@ main() {
     _soundex::test();
     editdistance::test();
 
+    _suggest_group::test();
+
     return 0;
 }
