@@ -28,9 +28,7 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
-
-// Boost-headers
-#include <boost/unordered_map.hpp>
+#include <unordered_map>
 
 #if !defined NMAX
 #define NMAX 32
@@ -48,9 +46,9 @@
 // Undefine the macro below to use C-style I/O routines.
 // #define USE_CXX_IO
 
-typedef boost::unordered::unordered_map<std::string, SuggestGroup> SuggestGroupMap;
-typedef boost::unordered::unordered_map<std::string, SuggestGroup>::const_iterator SuggestGroupConstIterator;
-typedef boost::unordered::unordered_map<std::string, SuggestGroup>::iterator SuggestGroupIterator;
+typedef std::unordered_map<std::string, SuggestGroup> SuggestGroupMap;
+typedef std::unordered_map<std::string, SuggestGroup>::const_iterator SuggestGroupConstIterator;
+typedef std::unordered_map<std::string, SuggestGroup>::iterator SuggestGroupIterator;
 SuggestGroupMap suggest_groups;
 
 char *if_mmap_addr = NULL;      // Pointer to the mmapped area of the file

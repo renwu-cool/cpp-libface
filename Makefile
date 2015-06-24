@@ -1,9 +1,9 @@
-CXXFLAGS=       -Wall $(COPT) -D_FILE_OFFSET_BITS=64
+CXXFLAGS=       -Wall $(COPT) -D_FILE_OFFSET_BITS=64 -std=c++11
 LINKFLAGS=	-lm -lrt -pthread
 INCDEPS=        include/segtree.hpp include/sparsetable.hpp include/benderrmq.hpp \
                 include/phrase_map.hpp include/suggest.hpp include/types.hpp \
                 include/utils.hpp include/httpserver.hpp
-INCDIRS=        -I . -I deps -I /usr/include
+INCDIRS=        -I . -I deps
 OBJDEPS=        src/httpserver.o deps/libuv/libuv.a
 HTTPSERVERDEPS= src/httpserver.cpp include/httpserver.hpp include/utils.hpp \
 		include/types.hpp
