@@ -28,7 +28,6 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
-#include <unordered_map>
 
 #if !defined NMAX
 #define NMAX 32
@@ -46,9 +45,9 @@
 // Undefine the macro below to use C-style I/O routines.
 // #define USE_CXX_IO
 
-typedef std::unordered_map<std::string, SuggestGroup> SuggestGroupMap;
-typedef std::unordered_map<std::string, SuggestGroup>::const_iterator SuggestGroupConstIterator;
-typedef std::unordered_map<std::string, SuggestGroup>::iterator SuggestGroupIterator;
+typedef std::map<std::string, SuggestGroup> SuggestGroupMap;
+typedef std::map<std::string, SuggestGroup>::const_iterator SuggestGroupConstIterator;
+typedef std::map<std::string, SuggestGroup>::iterator SuggestGroupIterator;
 SuggestGroupMap suggest_groups;
 
 char *if_mmap_addr = NULL;      // Pointer to the mmapped area of the file
@@ -639,7 +638,7 @@ static void handle_export(client_t *client, parsed_url_t &url) {
     const time_t start_time = time(NULL);
 
     size_t total_records = 0;
-    for (SuggestGroupConstIterator it = suggest_groups.cbegin(); it != suggest_groups.cend(); ++it) {
+    for (SuggestGroupConstIterator it = suggest_groups.begin(); it != suggest_groups.end(); ++it) {
         for (size_t i = 0; i < it->second.pm.repr.size(); ++i) {
             fout<<it->second.pm.repr[i].weight<<'\t'<<it->second.pm.repr[i].phrase<<'\t'<<std::string(it->second.pm.repr[i].snippet)<<'\n';
             total_records += it->second.pm.repr.size();
@@ -724,7 +723,7 @@ static void handle_stats(client_t *client, parsed_url_t &url) {
     }
     else {
         int total_entries = 0;
-        for (SuggestGroupConstIterator it = suggest_groups.cbegin(); it != suggest_groups.cend(); ++it) {
+        for (SuggestGroupConstIterator it = suggest_groups.begin(); it != suggest_groups.end(); ++it) {
             total_entries += it->second.pm.repr.size();
         }
         b += sprintf(b, "Data store size: %d entries\n", total_entries);
