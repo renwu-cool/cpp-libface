@@ -708,6 +708,14 @@ static void handle_suggest(client_t *client, parsed_url_t &url) {
     write_response(client, 200, "OK", headers, body);
 }
 
+static void handle_healthcheck(client_t *client, parsed_url_t &url) {
+    headers_t headers;
+    headers["Cache-Control"] = "no-cache";
+
+    std::string body="up and running";
+    write_response(client, 200, "OK", headers, body);
+}
+
 static void handle_stats(client_t *client, parsed_url_t &url) {
     headers_t headers;
     headers["Cache-Control"] = "no-cache";
@@ -759,6 +767,9 @@ void serve_request(client_t *client) {
     }
     else if (request_uri == "/face/stats/") {
         handle_stats(client, url);
+    }
+    else if (request_uri == "/face/healthcheck") {
+        handle_healthcheck(client, url);
     }
     else {
         handle_invalid_request(client, url);
