@@ -24,10 +24,23 @@
 #include <include/types.hpp>
 #include <include/utils.hpp>
 
+// fasttext
+#include <include/fasttext_impl.hpp>
+
+// lrucache
+#include <include/lrucache.hpp>
+
 // C++-headers
 #include <string>
 #include <fstream>
 #include <algorithm>
+#include <regex>
+#include <future>
+#include <ctime>
+#include <chrono>
+#include <thread>
+#include <queue>
+#include <mutex>
 
 #if !defined NMAX
 #define NMAX 32
@@ -44,7 +57,6 @@
 
 // Undefine the macro below to use C-style I/O routines.
 // #define USE_CXX_IO
-
 typedef std::map<std::string, SuggestGroup> SuggestGroupMap;
 typedef std::map<std::string, SuggestGroup>::const_iterator SuggestGroupConstIterator;
 typedef std::map<std::string, SuggestGroup>::iterator SuggestGroupIterator;
@@ -60,6 +72,28 @@ bool opt_show_help = false;     // Was --help requested?
 const char *ac_file = NULL;     // Path to the input file
 int port = 6767;                // The port number on which to start the HTTP server
 const char *project_homepage_url = "https://github.com/duckduckgo/cpp-libface/";
+
+
+std::string model_path;
+std::string suggestions_path;
+lru11::Cache<std::string, vp_t> cache(10000);
+FastTextImpl *ft_model;
+std::queue<std::string> queue_;
+std::mutex mtx;
+
+
+std::thread t([&queue_, &cache, &mtx](){
+    while(true){
+        if(!queue_.empty()){
+            std::string q = queue_.front();
+            if(!cache.contains(q))
+                cache.insert(q, ft_model->getSuggestions(q));
+            queue_.pop();
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        }
+    }
+});
 
 enum {
     // We are in a non-WS state
@@ -572,6 +606,11 @@ do_import(std::string file, uint_t limit,
     return 0;
 }
 
+std::regex CLEAN_REGEX("\\.");
+std::string clean(std::string q) {
+    return std::regex_replace(q, CLEAN_REGEX, "$1 $2");
+}
+
 static void handle_import(client_t *client, parsed_url_t &url) {
     std::string body;
     headers_t headers;
@@ -654,6 +693,34 @@ static void handle_export(client_t *client, parsed_url_t &url) {
     write_response(client, 200, "OK", headers, body);
 }
 
+bool get_fasttext_suggest(std::string q, vp_t &result) {
+    if(cache.tryGet(q, result))
+        return true;
+    mtx.lock();
+    queue_.push(q);
+    mtx.unlock();
+    return false;
+}
+
+static void handle_fasttext_suggest(client_t *client, parsed_url_t &url) {
+    std::string body;
+    headers_t headers;
+    headers["Cache-Control"] = "no-cache";
+
+    if (building) {
+        write_response(client, 412, "Busy", headers, body);
+        return;
+    }
+    std::string q    = unescape_query(url.query["q"]);
+    std::string sn   = url.query["n"];
+    DCERR("handle_suggest::q:"<<q<<endl);
+    str_lowercase(q);
+    vp_t results;
+    get_fasttext_suggest(q, results);
+    body = results_json(q, results, "") + "\n";
+    write_response(client, 200, "OK", headers, body);
+}
+
 static void handle_suggest(client_t *client, parsed_url_t &url) {
     ++nreq;
     std::string body;
@@ -664,8 +731,8 @@ static void handle_suggest(client_t *client, parsed_url_t &url) {
         write_response(client, 412, "Busy", headers, body);
         return;
     }
-
-    std::string q    = unescape_query(url.query["q"]);
+    std::string rawQ = unescape_query(url.query["q"]);
+    std::string q    = clean(rawQ);
     std::string sn   = url.query["n"];
     std::string cb   = unescape_query(url.query["callback"]);
     std::string type = unescape_query(url.query["type"]);
@@ -691,6 +758,13 @@ static void handle_suggest(client_t *client, parsed_url_t &url) {
     const bool has_cb = !cb.empty();
     str_lowercase(q);
     vp_t results = suggest(sg.pm, sg.st, q, n);
+    vp_t fastext_results;
+
+    if(get_fasttext_suggest(q, fastext_results)){
+        results.insert(results.end(), fastext_results.begin(), fastext_results.end());
+        std::set<phrase_t> s(results.begin(), results.end());
+        results.assign(s.begin(), s.end());
+    }
 
     /*
       for (size_t i = 0; i < results.size(); ++i) {
@@ -704,7 +778,6 @@ static void handle_suggest(client_t *client, parsed_url_t &url) {
     else {
         body = results_json(q, results, type) + "\n";
     }
-
     write_response(client, 200, "OK", headers, body);
 }
 
@@ -749,7 +822,6 @@ static void handle_invalid_request(client_t *client, parsed_url_t &url) {
     write_response(client, 404, "Not Found", headers, body);
 }
 
-
 void serve_request(client_t *client) {
     parsed_url_t url;
     parse_URL(client->url, url);
@@ -770,6 +842,8 @@ void serve_request(client_t *client) {
     }
     else if (request_uri == "/face/healthcheck") {
         handle_healthcheck(client, url);
+    }else if (request_uri == "/face/suggest_fasttext/") {
+        handle_fasttext_suggest(client, url);
     }
     else {
         handle_invalid_request(client, url);
@@ -784,6 +858,8 @@ show_usage(char *argv[]) {
     printf("Optional arguments:\n\n");
     printf("-h, --help           This screen\n");
     printf("-f, --file=PATH      Path of the file containing the phrases\n");
+    printf("-m, --model_path=PATH      Path of the file containing the model\n");
+    printf("-s, --suggestions_path=PATH      Path of the file containing the suggestion tokens for sent2vec model\n");
     printf("-p, --port=PORT      TCP port on which to start lib-face (default: 6767)\n");
     printf("-l, --limit=LIMIT    Load only the first LIMIT lines from PATH (default: -1 [unlimited])\n");
     printf("\n");
@@ -797,6 +873,8 @@ parse_options(int argc, char *argv[]) {
     while (1) {
         int option_index = 0;
         static struct option long_options[] = {
+            {"modelpath", 1, 0, 'm'},
+            {"suggestionspath", 1, 0, 's'},
             {"file", 1, 0, 'f'},
             {"port", 1, 0, 'p'},
             {"limit", 1, 0, 'l'},
@@ -804,7 +882,7 @@ parse_options(int argc, char *argv[]) {
             {0, 0, 0, 0}
         };
 
-        c = getopt_long(argc, argv, "f:p:l:h",
+        c = getopt_long(argc, argv, "m:s:f:p:l:h",
                         long_options, &option_index);
 
         if (c == -1)
@@ -812,6 +890,14 @@ parse_options(int argc, char *argv[]) {
 
         switch (c) {
         case 0:
+        case 'm':
+            DCERR("File: "<<optarg<<endl);
+            model_path = optarg;
+            break;
+        case 's':
+            DCERR("File: "<<optarg<<endl);
+            suggestions_path = optarg;
+            break;
         case 'f':
             DCERR("File: "<<optarg<<endl);
             ac_file = optarg;
@@ -881,7 +967,9 @@ main(int argc, char* argv[]) {
                     nadded, nlines, ac_file, (int)(time(NULL) - start_time));
         }
     }
+    ft_model = new FastTextImpl(model_path, suggestions_path);
 
+    t.detach();
     int r = httpserver_start(&serve_request, "0.0.0.0", port);
     if (r != 0) {
         fprintf(stderr, "ERROR::Could not start the web server\n");

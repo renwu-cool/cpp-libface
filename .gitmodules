@@ -4,3 +4,7 @@
 [submodule "deps/http-parser"]
 	path = deps/http-parser
 	url = git@github.com:joyent/http-parser.git
+[submodule "deps/sent2vec"]
+	path = deps/sent2vec
+	url = git@github.com:ind9/sent2vec.git
+	branch = master
