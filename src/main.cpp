@@ -465,7 +465,11 @@ json_result_val(vp_t& suggestions)
 
     std::string trailer = i + 1 == suggestions.end() ? "" : ",";
     // + uint_to_string(i->weight)
+#if !defined UNIQUE_BY_ID
+    ret += snippet + trailer;
+#else
     ret += "\"" + snippet + "\"" + trailer;
+#endif
   }
   return ret;
 }
