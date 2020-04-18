@@ -820,9 +820,7 @@ static void handle_suggest(client_t *client, parsed_url_t &url)
 
   const bool has_cb = !cb.empty();
   str_lowercase(q);
-  vp_t results = suggest(
-                   pm, st, q, n, type == "id"
-                 );
+  vp_t results = suggest(pm, st, q, n);
 
   /*
     for (size_t i = 0; i < results.size(); ++i) {

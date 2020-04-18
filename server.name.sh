@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 
 ROOT=$(cd "$(dirname "$0")"; pwd)
-cd $ROOT/server
+cd $ROOT
 
-if [ ! -f "./name" ]; then
+if [ ! -f "./server/name" ]; then
 ../make.sh
 fi
-
-if [ ! -f "./name.tsv" ]; then
+if [ ! -f "./server/name.tsv" ]; then
 ../data.py
 fi
 
+cd server
 ./name -f name.tsv

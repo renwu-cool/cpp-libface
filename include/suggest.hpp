@@ -46,12 +46,13 @@ suggest(
   PhraseMap &pm,
   RMQ &st,
   std::string prefix,
-  uint_t n = 16,
-  bool unique_by_val = false
+  uint_t n = 16
 )
 {
   pvpi_t phrases = pm.query(prefix);
+#if defined UNIQUE_BY_ID
   set<std::string> unique;
+#endif
   // cerr << "Got " << phrases.second - phrases.first << " candidate phrases from PhraseMap" << " " << unique_by_val << endl;
 
   uint_t first = phrases.first  - pm.repr.begin();
@@ -74,22 +75,18 @@ suggest(
     PhraseRange pr = heap.top();
     heap.pop();
     // cerr << "Top phrase is at index: " << pr.index << endl;
-    bool push;
-    if (unique_by_val)
+#if defined UNIQUE_BY_ID
     {
       string snippet = pm.repr[pr.index].snippet;
-      if (unique.count(snippet)) push = false;
-      else
+      if (!unique.count(snippet))
       {
         unique.insert(snippet);
-        push = true;
+        ret.push_back(pm.repr[pr.index]);
       }
     }
-    else push = true;
-    if (push)
-    {
-      ret.push_back(pm.repr[pr.index]);
-    }
+#else
+    ret.push_back(pm.repr[pr.index]);
+#endif
     //cerr << ret.size() << " " << snippet << endl;
 
     uint_t lower = pr.first;
