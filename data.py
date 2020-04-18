@@ -7,9 +7,9 @@ from random import randint
 ROOT = join(dirname(abspath(__file__)),"server")
 with open(join(ROOT,"name.tsv"),"w") as f:
     for i in range(99999):
-        f.write(f"{randint(0, i)}\t{gen_two_words()}\t{gen_two_words()}\n")
+        f.write(f"{randint(1, 1+i)}\t{gen_two_words()}\t{gen_two_words()}\n")
 
 
 with open(join(ROOT,"id.tsv"),"w") as f:
     for i in range(99999):
-        f.write(f"{randint(0, i)}\t{gen_two_words()}\t{randint(1,10)}\n")
+        f.write(f"{randint(1, 1+i)}\t{gen_two_words()}\t{randint(1,10)}\n")
