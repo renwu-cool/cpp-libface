@@ -447,7 +447,7 @@ json_result(vp_t& suggestions)
     // + uint_to_string(i->weight)
     ret += snippet + ",\"" + i->phrase + "\"" + trailer;
   }
-  return ret;
+  return "[" + ret + "]";
 }
 #endif
 
@@ -457,18 +457,22 @@ json_result_val(vp_t& suggestions)
 {
   std::string ret;
   ret.reserve(OUTPUT_SIZE_RESERVE);
+#if defined UNIQUE_BY_ID
+  const string end = ",";
+#else
+  const string end = "\n";
+#endif
   for (vp_t::iterator i = suggestions.begin(); i != suggestions.end(); ++i)
   {
     std::string snippet = i->snippet;
     if (snippet.empty()) snippet = i->phrase;
-    escape_special_chars(snippet);
 
-    std::string trailer = i + 1 == suggestions.end() ? "" : ",";
     // + uint_to_string(i->weight)
-#if !defined UNIQUE_BY_ID
+    std::string trailer = i + 1 == suggestions.end() ? "" : end;
+#if defined UNIQUE_BY_ID
     ret += snippet + trailer;
 #else
-    ret += "\"" + snippet + "\"" + trailer;
+    ret +=  snippet +  trailer;
 #endif
   }
   return ret;
@@ -486,7 +490,7 @@ results_json(std::string q, vp_t& suggestions, std::string const& type)
   {
     r = json_result(suggestions);
   }
-  return "[" + r + "]";
+  return r ;
 }
 
 std::string
@@ -831,7 +835,11 @@ static void handle_suggest(client_t *client, parsed_url_t &url)
     mg_printf(conn, "%s:%d\n", results[i].first.c_str(), results[i].second);
     }
   */
-  headers["Content-Type"] = "application/json; charset=UTF-8";
+  string content_type;
+  if (type == "val")
+    content_type = "text/plain";
+  else content_type = "application/json";
+  headers["Content-Type"] = content_type + "; charset=UTF-8";
   if (has_cb)
   {
     body = cb + "(" + results_json(q, results, type) + ");\n";
