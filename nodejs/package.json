@@ -1,0 +1,17 @@
+{
+  "name": "function_arguments",
+  "version": "0.0.0",
+  "description": "Node.js Addons Example #2",
+  "main": "addon.js",
+  "private": true,
+  "dependencies": {
+    "bindings": "~1.2.1",
+    "node-addon-api": "^1.0.0"
+  },
+  "scripts": {
+    "test": "node addon.js",
+    "debug": "node-gyp clean configure build --debug --silly;node addon.js",
+    "release": "node-gyp clean configure build --silly"
+  },
+  "gypfile": true
+}
